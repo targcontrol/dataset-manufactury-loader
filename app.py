@@ -221,7 +221,18 @@ def process_file(uploaded_file, num_patterns):
     """Process the uploaded Excel file."""
     if uploaded_file:
         # Read Excel file
-        df = pd.read_excel(uploaded_file)
+        try:
+            df = pd.read_excel(uploaded_file)
+        except Exception as e:
+            st.error(f"Ошибка при чтении Excel-файла: {e}. Убедитесь, что файл имеет правильный формат (.xlsx).")
+            return
+
+        # Check for required columns
+        required_columns = ['Продукция', 'Локация']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            st.error(f"В файле отсутствуют обязательные столбцы: {', '.join(missing_columns)}. Проверьте структуру файла в инструкции.")
+            return
 
         # Get skills and locations (always fetch fresh data)
         skills_dict = get_skills()
@@ -232,6 +243,7 @@ def process_file(uploaded_file, num_patterns):
             st.info(f"Доступные локации из API: {', '.join(locations_dict.keys())}")
         else:
             st.error("Не удалось получить локации из API. Проверьте токен или доступность API.")
+            return
 
         # Check for matching skills
         skill_columns = [col for col in df.columns if col in skills_dict and col != 'Продукция' and col != 'Локация']
