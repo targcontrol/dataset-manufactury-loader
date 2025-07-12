@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import uuid
 import io
+from datetime import time
 
 # Streamlit app configuration
 st.set_page_config(page_title="Dataset Uploader", layout="wide")
@@ -51,6 +52,14 @@ if num_patterns == "2 шаблона":
 else:
     START_TIME_NIGHT = None
     END_TIME_NIGHT = None
+
+# Check if END_TIME_DAY is after START_TIME_NIGHT for 2 patterns
+time_valid = True
+if num_patterns == "2 шаблона" and START_TIME_NIGHT and END_TIME_DAY:
+    if END_TIME_DAY > START_TIME_NIGHT:
+        st.warning(
+            "Время окончания дневного шаблона не может быть позже времени начала ночного шаблона. Пожалуйста, исправьте.")
+        time_valid = False
 
 
 def get_locations():
@@ -231,6 +240,8 @@ def process_file(uploaded_file, num_patterns):
         st.success("Обработка файла завершена!")
 
 
-if uploaded_file and api_token:
-    if st.button("Обработать файл"):
+if uploaded_file and api_token and time_valid:
+    if st.button("Обработать файл", disabled=not time_valid):
         process_file(uploaded_file, num_patterns)
+else:
+    st.button("Обработать файл", disabled=True)
