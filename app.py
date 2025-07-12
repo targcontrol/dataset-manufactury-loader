@@ -9,14 +9,38 @@ from datetime import time
 st.set_page_config(page_title="Dataset Uploader", layout="wide")
 st.title("Создание датасетов для Производства")
 
+# Instruction button and example table
+with st.expander("Инструкция по созданию Excel-файла", expanded=False):
+    st.markdown("""
+    ### Пример структуры Excel-таблицы
+    Для корректной обработки файл должен содержать следующие столбцы:
+    - **Продукция**: Название продукта (например, "Продукт А").
+    - **Локация**: Строковое значение, точно совпадающее с именем локации в TARGControl (например, "Линия 1", "Линия 2", "Линия 3").
+    - **Навыки**: Столбцы с названиями навыков, которые совпадают с данными из TARGControl (например, "Навык1", "Навык2"). Значения — целые числа или пустые ячейки.
+
+    **Пример таблицы**:
+
+    | Продукция   | Локация | Навык1 | Навык2 |
+    |-------------|---------|--------|--------|
+    | Продукт А   | Линия 1       | 5      | 3      |
+    | Продукт Б   | Линия 2       | 2      | 0      |
+
+    Убедитесь, что:
+    - Столбец `Локация` содержит значения, точно совпадающие с именами локаций из TARGControl.
+    - Названия навыков в столбцах совпадают с названиями навыков в TARGControl.
+    - Значения в столбцах навыков — целые числа или пустые.
+    
+    ГЛАВНОЕ: Все названия должны быть в строгом соответствии с названиями в TARGControl!
+    """)
+
 # Input for API token
-api_token = st.text_input("Введите API Token", type="password")
+api_token = st.text_input("Введите API Token", type="password", key="api_token")
 if not api_token:
     st.warning("Пожалуйста, введите действительный API-токен для продолжения.")
     st.stop()
 
 # File uploader for Excel file
-uploaded_file = st.file_uploader("Загрузите Excel-файл", type=["xlsx"])
+uploaded_file = st.file_uploader("Загрузите Excel-файл", type=["xlsx"], key="file_uploader")
 
 # API configuration
 domen = 'dev'
@@ -33,22 +57,26 @@ PATTERN_NIGHT_ID = "5f308484-7b04-4453-a62f-588e52942a65"
 
 # Input for pattern times and number of patterns
 st.subheader("Настройки шаблонов")
-num_patterns = st.selectbox("Количество шаблонов", ["1 шаблон", "2 шаблона"])
+num_patterns = st.selectbox("Количество шаблонов", ["1 шаблон", "2 шаблона"], key="num_patterns")
 
 st.write("Время для дневного шаблона")
 col1, col2 = st.columns(2)
 with col1:
-    START_TIME_DAY = st.time_input("Время начала (дневной)", value=pd.to_datetime("08:00:00").time())
+    START_TIME_DAY = st.time_input("Время начала (дневной)", value=pd.to_datetime("08:00:00").time(),
+                                   key="start_time_day")
 with col2:
-    END_TIME_DAY = st.time_input("Время окончания (дневной)", value=pd.to_datetime("20:00:00").time())
+    END_TIME_DAY = st.time_input("Время окончания (дневной)", value=pd.to_datetime("20:00:00").time(),
+                                 key="end_time_day")
 
 if num_patterns == "2 шаблона":
     st.write("Время для ночного шаблона")
     col3, col4 = st.columns(2)
     with col3:
-        START_TIME_NIGHT = st.time_input("Время начала (ночной)", value=pd.to_datetime("20:00:00").time())
+        START_TIME_NIGHT = st.time_input("Время начала (ночной)", value=pd.to_datetime("20:00:00").time(),
+                                         key="start_time_night")
     with col4:
-        END_TIME_NIGHT = st.time_input("Время окончания (ночной)", value=pd.to_datetime("08:00:00").time())
+        END_TIME_NIGHT = st.time_input("Время окончания (ночной)", value=pd.to_datetime("08:00:00").time(),
+                                       key="end_time_night")
 else:
     START_TIME_NIGHT = None
     END_TIME_NIGHT = None
