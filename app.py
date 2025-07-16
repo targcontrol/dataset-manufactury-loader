@@ -16,21 +16,23 @@ with st.expander("Инструкция по созданию Excel-файла", 
     Для корректной обработки файл должен содержать следующие столбцы:
     - **Продукция**: Название продукта (например, "Продукт А").
     - **Локация**: Строковое значение, точно совпадающее с именем локации в TARGControl (например, "Линия 1", "Линия 2", "Линия 3").
+    - **Описание**: Описание продукта, например, код номенклатуры (необязательно, используется для описания датасета, если заполнено).
     - **Навыки**: Столбцы с названиями навыков, которые совпадают с данными из TARGControl (например, "Навык1", "Навык2"). Значения — целые числа или пустые ячейки.
 
     **Пример таблицы**:
 
-    | Продукция   | Локация | Навык1 | Навык2 |
-    |-------------|---------|--------|--------|
-    | Продукт А   | Линия 1       | 5      | 3      |
-    | Продукт Б   | Линия 2       | 2      | 0      |
+    | Продукция   | Локация   | Описание     | Навык1 | Навык2 |
+    |-------------|-----------|--------------|--------|--------|
+    | Продукт А   | Линия 1   | NOM12345     | 5      | 3      |
+    | Продукт Б   | Линия 2   |              | 2      | 0      |
 
-    Убедитесь, что:
-    - Столбец `Локация` содержит значения, точно совпадающие с именами локаций из TARGControl.
+    **Убедитесь, что**:
+    - Столбцы `Продукция` и `Локация` присутствуют и заполнены.
+    - Столбец `Описание` необязателен; если не заполнен, описание будет сформировано как "Датасет для [Продукция]".
+    - Значения в столбце `Локация` точно совпадают с именами локаций из TARGControl.
     - Названия навыков в столбцах совпадают с названиями навыков в TARGControl.
-    - Значения в столбцах навыков — целые числа или пустые.
-    
-    ГЛАВНОЕ: Все названия должны быть в строгом соответствии с названиями в TARGControl!
+    - Значения в столбцах навыков — целые числа или пустые ячейки.
+    - Все названия должны быть в строгом соответствии с данными в TARGControl!
     """)
 
 # Input for API token
@@ -43,17 +45,17 @@ if not api_token:
 uploaded_file = st.file_uploader("Загрузите Excel-файл", type=["xlsx"], key="file_uploader")
 
 # API configuration
-domen = 'dev'
+domen = 'cloud'
 headers = {
     'accept': 'application/json',
     'X-API-Key': api_token,
 }
 
 # Fixed values
-METRIC_ID = "0fc7ab83-41e2-4f51-8ea4-502e66d00a5b"
+METRIC_ID = ""
 FORECAST_MODEL_ID = "4fd37b8e-fe68-4b51-b703-e77dbe9231be"
-PATTERN_DAY_ID = "cf3ad7e1-b200-4f4f-a188-8f142a345d72"
-PATTERN_NIGHT_ID = "5f308484-7b04-4453-a62f-588e52942a65"
+PATTERN_DAY_ID = ""
+PATTERN_NIGHT_ID = ""
 
 # Input for pattern times and number of patterns
 st.subheader("Настройки шаблонов")
@@ -62,21 +64,17 @@ num_patterns = st.selectbox("Количество шаблонов", ["1 шаб�
 st.write("Время для дневного шаблона")
 col1, col2 = st.columns(2)
 with col1:
-    START_TIME_DAY = st.time_input("Время начала (дневной)", value=pd.to_datetime("08:00:00").time(),
-                                   key="start_time_day")
+    START_TIME_DAY = st.time_input("Время начала (дневной)", value=pd.to_datetime("08:00:00").time(), key="start_time_day")
 with col2:
-    END_TIME_DAY = st.time_input("Время окончания (дневной)", value=pd.to_datetime("20:00:00").time(),
-                                 key="end_time_day")
+    END_TIME_DAY = st.time_input("Время окончания (дневной)", value=pd.to_datetime("20:00:00").time(), key="end_time_day")
 
 if num_patterns == "2 шаблона":
     st.write("Время для ночного шаблона")
     col3, col4 = st.columns(2)
     with col3:
-        START_TIME_NIGHT = st.time_input("Время начала (ночной)", value=pd.to_datetime("20:00:00").time(),
-                                         key="start_time_night")
+        START_TIME_NIGHT = st.time_input("Время начала (ночной)", value=pd.to_datetime("20:00:00").time(), key="start_time_night")
     with col4:
-        END_TIME_NIGHT = st.time_input("Время окончания (ночной)", value=pd.to_datetime("08:00:00").time(),
-                                       key="end_time_night")
+        END_TIME_NIGHT = st.time_input("Время окончания (ночной)", value=pd.to_datetime("08:00:00").time(), key="end_time_night")
 else:
     START_TIME_NIGHT = None
     END_TIME_NIGHT = None
@@ -85,10 +83,8 @@ else:
 time_valid = True
 if num_patterns == "2 шаблона" and START_TIME_NIGHT and END_TIME_DAY:
     if END_TIME_DAY > START_TIME_NIGHT:
-        st.warning(
-            "Время окончания дневного шаблона не может быть позже времени начала ночного шаблона. Пожалуйста, исправьте.")
+        st.warning("Время окончания дневного шаблона не может быть позже времени начала ночного шаблона. Пожалуйста, исправьте.")
         time_valid = False
-
 
 def get_locations():
     """Fetch locations from API."""
@@ -109,7 +105,6 @@ def get_locations():
         st.error(f"Ошибка при получении локаций: {e}")
         return {}
 
-
 def get_skills():
     """Fetch skills from API without caching."""
     skills = {}
@@ -126,12 +121,11 @@ def get_skills():
         st.error(f"Ошибка при получении навыков: {e}")
         return {}
 
-
 def create_dataset_pattern(product_name, location_id, skills_dict, row, pattern_id, start_time, end_time):
     """Create dataset pattern with value=10 and value=20."""
     pattern_data = []
     # Use skills from API that match Excel columns
-    skill_columns = [col for col in row.index if col in skills_dict and col != 'Продукция' and col != 'Локация']
+    skill_columns = [col for col in row.index if col in skills_dict and col != 'Продукция' and col != 'Локация' and col != 'Описание']
 
     for skill in skill_columns:
         if pd.notna(row[skill]):
@@ -165,7 +159,6 @@ def create_dataset_pattern(product_name, location_id, skills_dict, row, pattern_
         "externalId": ""
     }
 
-
 def create_dataset(product_name, location_id, skills_dict, row, num_patterns):
     """Create dataset for product."""
     dataset_id = str(uuid.uuid4())
@@ -176,8 +169,7 @@ def create_dataset(product_name, location_id, skills_dict, row, num_patterns):
 
     # Always include day pattern
     patterns.append(
-        create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_DAY_ID, start_time_day,
-                               end_time_day)
+        create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_DAY_ID, start_time_day, end_time_day)
     )
 
     # Include night pattern only if 2 patterns are selected
@@ -185,21 +177,22 @@ def create_dataset(product_name, location_id, skills_dict, row, num_patterns):
         start_time_night = START_TIME_NIGHT.strftime("%H:%M:%S")
         end_time_night = END_TIME_NIGHT.strftime("%H:%M:%S")
         patterns.append(
-            create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_NIGHT_ID, start_time_night,
-                                   end_time_night)
+            create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_NIGHT_ID, start_time_night, end_time_night)
         )
+
+    # Use custom description if provided, otherwise default
+    description = row.get('Описание') if pd.notna(row.get('Описание')) and str(row.get('Описание')).strip() else f"Датасет для {product_name}"
 
     return {
         "locationId": location_id,
         "metricId": METRIC_ID,
         "forecastModelId": FORECAST_MODEL_ID,
         "name": f"{product_name}",
-        "description": f"Датасет для {product_name}",
+        "description": description,
         "datasetPatterns": patterns,
         "tags": [product_name],
         "externalId": None
     }
-
 
 def send_dataset(dataset):
     """Send dataset via API."""
@@ -215,7 +208,6 @@ def send_dataset(dataset):
     except requests.RequestException as e:
         st.error(f"Ошибка при отправке датасета {dataset['name']}: {e}")
         return None
-
 
 def process_file(uploaded_file, num_patterns):
     """Process the uploaded Excel file."""
@@ -246,10 +238,9 @@ def process_file(uploaded_file, num_patterns):
             return
 
         # Check for matching skills
-        skill_columns = [col for col in df.columns if col in skills_dict and col != 'Продукция' and col != 'Локация']
+        skill_columns = [col for col in df.columns if col in skills_dict and col != 'Продукция' and col != 'Локация' and col != 'Описание']
         if not skill_columns:
-            st.warning(
-                "Не найдено совпадающих навыков между Excel-файлом и данными API. Проверьте названия столбцов в файле и данные API.")
+            st.warning("Не найдено совпадающих навыков между Excel-файлом и данными API. Проверьте названия столбцов в файле и данные API.")
         else:
             st.info(f"Найдены совпадающие навыки: {', '.join(skill_columns)}")
 
@@ -278,7 +269,6 @@ def process_file(uploaded_file, num_patterns):
             progress_bar.progress((idx + 1) / total_rows)
 
         st.success("Обработка файла завершена!")
-
 
 if uploaded_file and api_token and time_valid:
     if st.button("Обработать файл", disabled=not time_valid):
