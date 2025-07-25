@@ -45,17 +45,14 @@ if not api_token:
 uploaded_file = st.file_uploader("Загрузите Excel-файл", type=["xlsx"], key="file_uploader")
 
 # API configuration
-domen = 'cloud'
+domen = 'dev'
 headers = {
     'accept': 'application/json',
     'X-API-Key': api_token,
 }
 
-# Fixed values
-METRIC_ID = ""
+# Fixed value
 FORECAST_MODEL_ID = "4fd37b8e-fe68-4b51-b703-e77dbe9231be"
-PATTERN_DAY_ID = ""
-PATTERN_NIGHT_ID = ""
 
 # Input for pattern times and number of patterns
 st.subheader("Настройки шаблонов")
@@ -99,7 +96,7 @@ def get_locations():
         response.raise_for_status()
         data = response.json()['data']
         for item in data:
-            locations[str(item['name'])] = item['id']  # Convert name to string for matching
+            locations[str(item['name'])] = item['id']
         return locations
     except requests.RequestException as e:
         st.error(f"Ошибка при получении локаций: {e}")
@@ -121,10 +118,55 @@ def get_skills():
         st.error(f"Ошибка при получении навыков: {e}")
         return {}
 
+def get_patterns():
+    """Fetch patterns from API."""
+    try:
+        response = requests.get(
+            f'https://{domen}.targcontrol.com/external/api/forecaster/pattern',
+            headers=headers
+        )
+        response.raise_for_status()
+        patterns = response.json()
+        if not patterns:
+            st.error("Шаблоны не найдены. Пожалуйста, создайте шаблон в веб-интерфейсе TARGControl.")
+            return None
+        return patterns[0]['id']  # Use the first pattern's ID
+    except requests.RequestException as e:
+        st.error(f"Ошибка при получении шаблонов: {e}")
+        return None
+
+def get_metrics():
+    """Fetch metrics from API."""
+    try:
+        response = requests.get(
+            f'https://{domen}.targcontrol.com/external/api/forecaster/metric',
+            headers=headers
+        )
+        response.raise_for_status()
+        metrics = response.json()
+        return {metric['name']: metric['id'] for metric in metrics}
+    except requests.RequestException as e:
+        st.error(f"Ошибка при получении метрик: {e}")
+        return {}
+
+# Fetch metrics and allow user to select one
+metrics_dict = get_metrics()
+if not metrics_dict:
+    st.error("Метрики не найдены. Пожалуйста, создайте метрику в веб-интерфейсе TARGControl.")
+    st.stop()
+
+st.subheader("Выбор метрики")
+metric_name = st.selectbox("Выберите метрику", list(metrics_dict.keys()), key="metric_select")
+METRIC_ID = metrics_dict[metric_name]
+
+# Fetch pattern ID
+PATTERN_ID = get_patterns()
+if not PATTERN_ID:
+    st.stop()
+
 def create_dataset_pattern(product_name, location_id, skills_dict, row, pattern_id, start_time, end_time):
     """Create dataset pattern with value=10 and value=20."""
     pattern_data = []
-    # Use skills from API that match Excel columns
     skill_columns = [col for col in row.index if col in skills_dict and col != 'Продукция' and col != 'Локация' and col != 'Описание']
 
     for skill in skill_columns:
@@ -163,13 +205,12 @@ def create_dataset(product_name, location_id, skills_dict, row, num_patterns):
     """Create dataset for product."""
     dataset_id = str(uuid.uuid4())
     patterns = []
-    # Convert time objects to string format (HH:MM:SS)
     start_time_day = START_TIME_DAY.strftime("%H:%M:%S")
     end_time_day = END_TIME_DAY.strftime("%H:%M:%S")
 
     # Always include day pattern
     patterns.append(
-        create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_DAY_ID, start_time_day, end_time_day)
+        create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_ID, start_time_day, end_time_day)
     )
 
     # Include night pattern only if 2 patterns are selected
@@ -177,10 +218,9 @@ def create_dataset(product_name, location_id, skills_dict, row, num_patterns):
         start_time_night = START_TIME_NIGHT.strftime("%H:%M:%S")
         end_time_night = END_TIME_NIGHT.strftime("%H:%M:%S")
         patterns.append(
-            create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_NIGHT_ID, start_time_night, end_time_night)
+            create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_ID, start_time_night, end_time_night)
         )
 
-    # Use custom description if provided, otherwise default
     description = row.get('Описание') if pd.notna(row.get('Описание')) and str(row.get('Описание')).strip() else f"Датасет для {product_name}"
 
     return {
@@ -212,51 +252,43 @@ def send_dataset(dataset):
 def process_file(uploaded_file, num_patterns):
     """Process the uploaded Excel file."""
     if uploaded_file:
-        # Read Excel file
         try:
             df = pd.read_excel(uploaded_file)
         except Exception as e:
             st.error(f"Ошибка при чтении Excel-файла: {e}. Убедитесь, что файл имеет правильный формат (.xlsx).")
             return
 
-        # Check for required columns
         required_columns = ['Продукция', 'Локация']
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             st.error(f"В файле отсутствуют обязательные столбцы: {', '.join(missing_columns)}. Проверьте структуру файла в инструкции.")
             return
 
-        # Get skills and locations (always fetch fresh data)
         skills_dict = get_skills()
         locations_dict = get_locations()
 
-        # Display available locations for debugging
         if locations_dict:
             st.info(f"Доступные локации из API: {', '.join(locations_dict.keys())}")
         else:
             st.error("Не удалось получить локации из API. Проверьте токен или доступность API.")
             return
 
-        # Check for matching skills
         skill_columns = [col for col in df.columns if col in skills_dict and col != 'Продукция' and col != 'Локация' and col != 'Описание']
         if not skill_columns:
             st.warning("Не найдено совпадающих навыков между Excel-файлом и данными API. Проверьте названия столбцов в файле и данные API.")
         else:
             st.info(f"Найдены совпадающие навыки: {', '.join(skill_columns)}")
 
-        # Process each row
         progress_bar = st.progress(0)
         total_rows = len(df)
         for idx, row in df.iterrows():
             product_name = row['Продукция']
             try:
-                # Convert location to string for strict matching
                 location_name = str(row['Локация'])
             except (ValueError, TypeError):
                 st.warning(f"Некорректное значение локации в строке {idx + 2}: {row['Локация']}. Пропускаем.")
                 continue
 
-            # Strict matching: location_name must exactly match a key in locations_dict
             if location_name not in locations_dict:
                 st.warning(f"Локация '{location_name}' не найдена в ответе API. Проверьте доступные локации выше.")
                 continue
@@ -265,12 +297,11 @@ def process_file(uploaded_file, num_patterns):
             dataset = create_dataset(product_name, location_id, skills_dict, row, num_patterns)
             send_dataset(dataset)
 
-            # Update progress
             progress_bar.progress((idx + 1) / total_rows)
 
         st.success("Обработка файла завершена!")
 
-if uploaded_file and api_token and time_valid:
+if uploaded_file and api_token and time_valid and PATTERN_ID and METRIC_ID:
     if st.button("Обработать файл", disabled=not time_valid):
         process_file(uploaded_file, num_patterns)
 else:
