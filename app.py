@@ -45,7 +45,7 @@ if not api_token:
 uploaded_file = st.file_uploader("Загрузите Excel-файл", type=["xlsx"], key="file_uploader")
 
 # API configuration
-domen = 'dev'
+domen = 'cloud'
 headers = {
     'accept': 'application/json',
     'X-API-Key': api_token,
