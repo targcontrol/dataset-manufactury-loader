@@ -10,7 +10,7 @@ st.set_page_config(page_title="Dataset Uploader", layout="wide")
 st.title("Создание датасетов для Производства")
 
 # Instruction button and example table
-with st.expander("Инструкция по созданию Excel-файла", expanded=False):
+with st.expander("Инструкция по созданию TARGControl", expanded=False):
     st.markdown("""
     ### Пример структуры Excel-таблицы
     Для корректной обработки файл должен содержать следующие столбцы:
@@ -119,7 +119,7 @@ def get_skills():
         return {}
 
 def get_patterns():
-    """Fetch patterns from API."""
+    """Fetch patterns from API and return list of pattern IDs."""
     try:
         response = requests.get(
             f'https://{domen}.targcontrol.com/external/api/forecaster/pattern',
@@ -129,11 +129,11 @@ def get_patterns():
         patterns = response.json()
         if not patterns:
             st.error("Шаблоны не найдены. Пожалуйста, создайте шаблон в веб-интерфейсе TARGControl.")
-            return None
-        return patterns[0]['id']  # Use the first pattern's ID
+            return []
+        return [pattern['id'] for pattern in patterns if not pattern['datasetId']]
     except requests.RequestException as e:
         st.error(f"Ошибка при получении шаблонов: {e}")
-        return None
+        return []
 
 def get_metrics():
     """Fetch metrics from API."""
@@ -159,15 +159,20 @@ st.subheader("Выбор метрики")
 metric_name = st.selectbox("Выберите метрику", list(metrics_dict.keys()), key="metric_select")
 METRIC_ID = metrics_dict[metric_name]
 
-# Fetch pattern ID
-PATTERN_ID = get_patterns()
-if not PATTERN_ID:
+# Fetch pattern IDs
+PATTERN_IDS = get_patterns()
+if not PATTERN_IDS:
+    st.stop()
+
+# Check if enough patterns are available
+if num_patterns == "2 шаблона" and len(PATTERN_IDS) < 2:
+    st.error(f"Для создания датасета с 2 шаблонами требуется как минимум 2 шаблона в TARGControl. Доступно только {len(PATTERN_IDS)} шаблона. Создайте дополнительный шаблон в веб-интерфейсе TARGControl.")
     st.stop()
 
 def create_dataset_pattern(product_name, location_id, skills_dict, row, pattern_id, start_time, end_time):
     """Create dataset pattern with value=10 and value=20."""
     pattern_data = []
-    skill_columns = [col for col in row.index if col in skills_dict and col != 'Продукция' and col != 'Локация' and col != 'Описание']
+    skill_columns = [col for col in row.index if col in skills_dict and col not in ['Продукция', 'Локация', 'Описание']]
 
     for skill in skill_columns:
         if pd.notna(row[skill]):
@@ -208,17 +213,17 @@ def create_dataset(product_name, location_id, skills_dict, row, num_patterns):
     start_time_day = START_TIME_DAY.strftime("%H:%M:%S")
     end_time_day = END_TIME_DAY.strftime("%H:%M:%S")
 
-    # Always include day pattern
+    # Use first pattern for day
     patterns.append(
-        create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_ID, start_time_day, end_time_day)
+        create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_IDS[0], start_time_day, end_time_day)
     )
 
-    # Include night pattern only if 2 patterns are selected
+    # Include night pattern only if 2 patterns are selected and available
     if num_patterns == "2 шаблона" and START_TIME_NIGHT and END_TIME_NIGHT:
         start_time_night = START_TIME_NIGHT.strftime("%H:%M:%S")
         end_time_night = END_TIME_NIGHT.strftime("%H:%M:%S")
         patterns.append(
-            create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_ID, start_time_night, end_time_night)
+            create_dataset_pattern(product_name, location_id, skills_dict, row, PATTERN_IDS[1], start_time_night, end_time_night)
         )
 
     description = row.get('Описание') if pd.notna(row.get('Описание')) and str(row.get('Описание')).strip() else f"Датасет для {product_name}"
@@ -243,11 +248,9 @@ def send_dataset(dataset):
             json=dataset
         )
         response.raise_for_status()
-        st.success(f"Датасет {dataset['name']} успешно отправлен.")
-        return response.json()
+        return True, f"Датасет {dataset['name']} успешно отправлен."
     except requests.RequestException as e:
-        st.error(f"Ошибка при отправке датасета {dataset['name']}: {e}")
-        return None
+        return False, f"Ошибка при отправке датасета {dataset['name']}: {e}"
 
 def process_file(uploaded_file, num_patterns):
     """Process the uploaded Excel file."""
@@ -273,14 +276,18 @@ def process_file(uploaded_file, num_patterns):
             st.error("Не удалось получить локации из API. Проверьте токен или доступность API.")
             return
 
-        skill_columns = [col for col in df.columns if col in skills_dict and col != 'Продукция' and col != 'Локация' and col != 'Описание']
+        skill_columns = [col for col in df.columns if col in skills_dict and col not in ['Продукция', 'Локация', 'Описание']]
         if not skill_columns:
             st.warning("Не найдено совпадающих навыков между Excel-файлом и данными API. Проверьте названия столбцов в файле и данные API.")
         else:
             st.info(f"Найдены совпадающие навыки: {', '.join(skill_columns)}")
 
-        progress_bar = st.progress(0)
         total_rows = len(df)
+        st.info(f"Всего продукции для создания: {total_rows} датасетов")
+        progress_bar = st.progress(0)
+        progress_text = st.empty()  # Placeholder for progress text
+        processed_count = 0
+
         for idx, row in df.iterrows():
             product_name = row['Продукция']
             try:
@@ -295,13 +302,27 @@ def process_file(uploaded_file, num_patterns):
 
             location_id = locations_dict[location_name]
             dataset = create_dataset(product_name, location_id, skills_dict, row, num_patterns)
-            send_dataset(dataset)
+            success, message = send_dataset(dataset)
+            if success:
+                processed_count += 1
+                st.success(message)
+            else:
+                st.error(message)
 
             progress_bar.progress((idx + 1) / total_rows)
+            progress_text.text(f"Обработано {processed_count} из {total_rows} датасетов")
 
         st.success("Обработка файла завершена!")
 
-if uploaded_file and api_token and time_valid and PATTERN_ID and METRIC_ID:
+# Display total datasets to process if file is uploaded
+if uploaded_file:
+    try:
+        df = pd.read_excel(uploaded_file)
+        st.info(f"Всего продукции для создания: {len(df)} датасетов")
+    except Exception as e:
+        st.error(f"Ошибка при чтении файла для подсчета датасетов: {e}")
+
+if uploaded_file and api_token and time_valid and PATTERN_IDS:
     if st.button("Обработать файл", disabled=not time_valid):
         process_file(uploaded_file, num_patterns)
 else:
