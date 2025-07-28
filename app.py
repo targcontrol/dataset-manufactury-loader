@@ -10,7 +10,7 @@ st.set_page_config(page_title="Dataset Uploader", layout="wide")
 st.title("Создание датасетов для Производства")
 
 # Instruction button and example table
-with st.expander("Инструкция по созданию TARGControl", expanded=False):
+with st.expander("Инструкция по созданию Excel файла", expanded=False):
     st.markdown("""
     ### Пример структуры Excel-таблицы
     Для корректной обработки файл должен содержать следующие столбцы:
