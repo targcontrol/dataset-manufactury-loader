@@ -1,5 +1,12 @@
 # 📊 Dataset Uploader для TARGControl
 
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Streamlit](https://img.shields.io/badge/streamlit-1.46%2B-FF4B4B)
+![Pandas](https://img.shields.io/badge/pandas-2.3%2B-150458)
+![Requests](https://img.shields.io/badge/requests-2.32%2B-black)
+![Excel](https://img.shields.io/badge/excel-.xlsx-217346)
+![Docker](https://img.shields.io/badge/docker-ready-2496ED)
+
 Веб-приложение на базе **Streamlit**, предназначенное для автоматизации создания и отправки **датасетов** в систему **TARGControl** через внешний API.  
 Сервис упрощает массовое формирование датасетов на основе Excel-файлов с данными о продукции, локациях и навыках.
 
